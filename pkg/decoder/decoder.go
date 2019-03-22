@@ -52,15 +52,6 @@ func (d *decoder) timestamp() time.Time {
 	return ts.Add(time.Duration(micro) * time.Microsecond)
 }
 
-func (d *decoder) rowInfo(char byte) bool {
-	if d.buf.Next(1)[0] == char {
-		return true
-	} else {
-		d.buf.UnreadByte()
-		return false
-	}
-}
-
 func (d *decoder) tupledata() []message.TupleData {
 	size := int(d.uint16())
 	data := make([]message.TupleData, size)
@@ -69,7 +60,7 @@ func (d *decoder) tupledata() []message.TupleData {
 		case 'n':
 			data[i] = message.TupleData{Kind: message.TupleNull, Value: []byte{}}
 		case 'u':
-			data[i] = message.TupleData{Kind: message.TupleToasted, Value: []byte{}}
+			data[i] = message.TupleData{Kind: message.TupleUnchanged, Value: []byte{}}
 		case 't':
 			vsize := int(d.order.Uint32(d.buf.Next(4)))
 			data[i] = message.TupleData{Kind: message.TupleText, Value: d.buf.Next(vsize)}
@@ -101,6 +92,9 @@ func Parse(src []byte) (message.Message, error) {
 	msgType := src[0]
 	d := &decoder{order: binary.BigEndian, buf: bytes.NewBuffer(src[1:])}
 
+	// XXX: currently we trust that everything we get is well formatted and doesn't
+	// contain mistakes. But to be completely safe we should add some format
+	// checks.
 	switch msgType {
 	case 'B':
 		b := &message.Begin{}
@@ -147,30 +141,36 @@ func Parse(src []byte) (message.Message, error) {
 		i := &message.Insert{}
 
 		i.RelationOID = d.oid()
-		i.IsNew = d.uint8() == 'N'
-		i.NewRow = d.tupledata()
+		if d.uint8() == 'N' {
+			i.NewRow = d.tupledata()
+		}
 		msg = i
 
 	case 'U':
 		u := &message.Update{}
 
 		u.RelationOID = d.oid()
-		u.IsKey = d.rowInfo('K')
-		u.IsOld = d.rowInfo('O')
-		if u.IsKey || u.IsOld {
+		char := d.uint8()
+
+		// Did we receive a marker of old tuple?
+		if char == 'K' || char == 'O' {
 			u.OldRow = d.tupledata()
+			char = d.uint8()
 		}
-		u.IsNew = d.uint8() == 'N'
-		u.NewRow = d.tupledata()
+
+		if char == 'N' {
+			u.NewRow = d.tupledata()
+		}
 		msg = u
 
 	case 'D':
 		m := &message.Delete{}
 
 		m.RelationOID = d.oid()
-		m.IsKey = d.rowInfo('K')
-		m.IsOld = d.rowInfo('O')
-		m.OldRow = d.tupledata()
+		char := d.uint8()
+		if char == 'K' || char == 'O' {
+			m.OldRow = d.tupledata()
+		}
 		msg = m
 
 	case 'T':
