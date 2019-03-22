@@ -70,11 +70,26 @@ type Message interface {
 
 	MsgType() MType
 	RawData() []byte
+	SetRawData(data []byte)
+}
+
+type RawMessage struct {
+	Message
+	Data    []byte
+}
+
+func (m RawMessage) RawData() []byte {
+	return m.Data;
+}
+
+func (m RawMessage) SetRawData(data []byte) {
+	m.Data = make([]byte, len(data));
+	copy(m.Data, data);
 }
 
 type NamespacedName struct {
-	Namespace string `yaml:"Namespace"`
-	Name      string `yaml:"Name"`
+	Namespace string    `yaml:"Namespace"`
+	Name      string    `yaml:"Name"`
 }
 
 type Column struct {
@@ -84,20 +99,20 @@ type Column struct {
 	Mode    int32       `yaml:"Mode"`  // OID modifier of the column (atttypmod).
 }
 
-type Tuple struct {
+type TupleData struct {
 	Kind  TupleKind
 	Value []byte
 }
 
 type Begin struct {
-	Raw       []byte
+	RawMessage
 	FinalLSN  dbutils.LSN // LSN of the record that lead to this xact to be committed
 	Timestamp time.Time   // Commit timestamp of the transaction
 	XID       int32       // Xid of the transaction.
 }
 
 type Commit struct {
-	Raw            []byte
+	RawMessage
 	Flags          uint8       // Flags; currently unused (must be 0)
 	LSN            dbutils.LSN // The LastLSN of the commit.
 	TransactionLSN dbutils.LSN // LSN pointing to the end of the commit record + 1
@@ -105,50 +120,50 @@ type Commit struct {
 }
 
 type Origin struct {
-	Raw  []byte
+	RawMessage
 	LSN  dbutils.LSN // The last LSN of the commit on the origin server.
 	Name string
 }
 
 type Relation struct {
-	NamespacedName `yaml:"NamespacedName"`
+	NamespacedName                  `yaml:"NamespacedName"`
+	RawMessage
 
-	Raw             []byte          `yaml:"-"`
 	OID             dbutils.OID     `yaml:"OID"`             // OID of the relation.
 	ReplicaIdentity ReplicaIdentity `yaml:"ReplicaIdentity"` // Replica identity
 	Columns         []Column        `yaml:"Columns"`         // Columns
 }
 
 type Insert struct {
-	Raw         []byte
+	RawMessage
 	RelationOID dbutils.OID // OID of the relation corresponding to the OID in the relation message.
 	IsNew       bool        // Identifies tuple as a new tuple.
 
-	NewRow []Tuple
+	NewRow []TupleData
 }
 
 type Update struct {
-	Raw         []byte
+	RawMessage
 	RelationOID dbutils.OID // OID of the relation corresponding to the OID in the relation message.
 	IsKey       bool        // OldRow contains columns which are part of REPLICA IDENTITY index.
 	IsOld       bool        // OldRow contains old tuple in case of REPLICA IDENTITY set to FULL
 	IsNew       bool        // Identifies tuple as a new tuple.
 
-	OldRow []Tuple
-	NewRow []Tuple
+	OldRow []TupleData
+	NewRow []TupleData
 }
 
 type Delete struct {
-	Raw         []byte
+	RawMessage
 	RelationOID dbutils.OID // OID of the relation corresponding to the OID in the relation message.
 	IsKey       bool        // OldRow contains columns which are part of REPLICA IDENTITY index.
 	IsOld       bool        // OldRow contains old tuple in case of REPLICA IDENTITY set to FULL
 
-	OldRow []Tuple
+	OldRow []TupleData
 }
 
 type Truncate struct {
-	Raw             []byte
+	RawMessage
 	Cascade         bool
 	RestartIdentity bool
 	RelationOIDs    []dbutils.OID
@@ -156,8 +171,8 @@ type Truncate struct {
 
 type Type struct {
 	NamespacedName
+	RawMessage
 
-	Raw []byte
 	OID dbutils.OID // OID of the data type
 }
 
@@ -185,17 +200,7 @@ func (Origin) MsgType() MType   { return MsgOrigin }
 func (Type) MsgType() MType     { return MsgType }
 func (Truncate) MsgType() MType { return MsgTruncate }
 
-func (m Begin) RawData() []byte    { return m.Raw }
-func (m Relation) RawData() []byte { return m.Raw }
-func (m Update) RawData() []byte   { return m.Raw }
-func (m Insert) RawData() []byte   { return m.Raw }
-func (m Delete) RawData() []byte   { return m.Raw }
-func (m Commit) RawData() []byte   { return m.Raw }
-func (m Origin) RawData() []byte   { return m.Raw }
-func (m Type) RawData() []byte     { return m.Raw }
-func (m Truncate) RawData() []byte { return m.Raw }
-
-func (t Tuple) String() string {
+func (t TupleData) String() string {
 	switch t.Kind {
 	case TupleText:
 		return dbutils.QuoteLiteral(string(t.Value))
