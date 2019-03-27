@@ -22,9 +22,9 @@ const (
 	ReplicaIdentityIndex                   = 'i'
 	ReplicaIdentityFull                    = 'f'
 
-	TupleNull    TupleKind = 'n' // Identifies the data as NULL value.
-	TupleUnchanged         = 'u' // Identifies unchanged TOASTed value (the actual value is not sent).
-	TupleText              = 't' // Identifies the data as text formatted value.
+	TupleNull      TupleKind = 'n' // Identifies the data as NULL value.
+	TupleUnchanged           = 'u' // Identifies unchanged TOASTed value (the actual value is not sent).
+	TupleText                = 't' // Identifies the data as text formatted value.
 
 	MsgInsert MType = iota
 	MsgUpdate
@@ -74,16 +74,16 @@ type Message interface {
 
 type RawMessage struct {
 	Message
-	Data    []byte
+	Data []byte
 }
 
 func (m RawMessage) RawData() []byte {
-	return m.Data;
+	return m.Data
 }
 
 type NamespacedName struct {
-	Namespace string    `yaml:"Namespace"`
-	Name      string    `yaml:"Name"`
+	Namespace string `yaml:"Namespace"`
+	Name      string `yaml:"Name"`
 }
 
 type Column struct {
@@ -121,7 +121,7 @@ type Origin struct {
 
 type Relation struct {
 	RawMessage
-	NamespacedName                  `yaml:"NamespacedName"`
+	NamespacedName `yaml:"NamespacedName"`
 
 	OID             dbutils.OID     `yaml:"OID"`             // OID of the relation.
 	ReplicaIdentity ReplicaIdentity `yaml:"ReplicaIdentity"` // Replica identity
@@ -245,7 +245,7 @@ func joinTupleData(values []TupleData, delimiter string) string {
 		if !first {
 			b.WriteString(delimiter)
 		} else {
-			first = false;
+			first = false
 		}
 
 		b.WriteString(v.String())

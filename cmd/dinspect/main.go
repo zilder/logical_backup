@@ -48,7 +48,7 @@ func dumpFile(filepath string) {
 		}
 
 		msgType := msg.MsgType().String()
-        fmt.Printf("%-10s %s\n", msgType + ":", msg.String())
+		fmt.Printf("%-10s %s\n", msgType+":", msg.String())
 	}
 
 	if err := d.Close(); err != nil {

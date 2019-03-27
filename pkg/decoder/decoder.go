@@ -98,7 +98,7 @@ func Parse(src []byte) (message.Message, error) {
 	// checks.
 	switch msgType {
 	case 'B':
-		b := message.Begin{RawMessage: raw,}
+		b := message.Begin{RawMessage: raw}
 
 		b.FinalLSN = d.lsn()
 		b.Timestamp = d.timestamp()
@@ -106,7 +106,7 @@ func Parse(src []byte) (message.Message, error) {
 		return b, nil
 
 	case 'C':
-		c := message.Commit{RawMessage: raw,}
+		c := message.Commit{RawMessage: raw}
 
 		c.Flags = d.uint8()
 		c.LSN = d.lsn()
@@ -115,13 +115,13 @@ func Parse(src []byte) (message.Message, error) {
 		return c, nil
 
 	case 'O':
-		o := message.Origin{RawMessage: raw,}
+		o := message.Origin{RawMessage: raw}
 		o.LSN = d.lsn()
 		o.Name = d.string()
 		return o, nil
 
 	case 'R':
-		r := message.Relation{RawMessage: raw,}
+		r := message.Relation{RawMessage: raw}
 
 		r.OID = d.oid()
 		r.Namespace = d.string()
@@ -131,7 +131,7 @@ func Parse(src []byte) (message.Message, error) {
 		return r, nil
 
 	case 'Y':
-		t := message.Type{RawMessage: raw,}
+		t := message.Type{RawMessage: raw}
 
 		t.OID = d.oid()
 		t.Namespace = d.string()
@@ -139,7 +139,7 @@ func Parse(src []byte) (message.Message, error) {
 		return t, nil
 
 	case 'I':
-		i := message.Insert{RawMessage: raw,}
+		i := message.Insert{RawMessage: raw}
 
 		i.RelationOID = d.oid()
 		if d.uint8() == 'N' {
@@ -148,7 +148,7 @@ func Parse(src []byte) (message.Message, error) {
 		return i, nil
 
 	case 'U':
-		u := message.Update{RawMessage: raw,}
+		u := message.Update{RawMessage: raw}
 
 		u.RelationOID = d.oid()
 		char := d.uint8()
@@ -165,7 +165,7 @@ func Parse(src []byte) (message.Message, error) {
 		return u, nil
 
 	case 'D':
-		m := message.Delete{RawMessage: raw,}
+		m := message.Delete{RawMessage: raw}
 
 		m.RelationOID = d.oid()
 		char := d.uint8()
@@ -175,7 +175,7 @@ func Parse(src []byte) (message.Message, error) {
 		return m, nil
 
 	case 'T':
-		t := message.Truncate{RawMessage: raw,}
+		t := message.Truncate{RawMessage: raw}
 
 		relationsCnt := int(d.uint32())
 		options := d.uint8()

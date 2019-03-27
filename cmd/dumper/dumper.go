@@ -90,7 +90,7 @@ func main() {
 
 //HandleMessage processes message
 func (d *dumper) HandleMessage(msg message.Message, lsn dbutils.LSN) error {
-    log.Printf("%-18s %-10s: %s", lsn.String(), msg.MsgType(), msg.String());
+	log.Printf("%-18s %-10s: %s", lsn.String(), msg.MsgType(), msg.String())
 
 	if msg.MsgType() == message.MsgCommit {
 		d.consumer.AdvanceLSN(lsn)
