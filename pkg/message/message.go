@@ -70,7 +70,6 @@ type Message interface {
 
 	MsgType() MType
 	RawData() []byte
-	SetRawData(data []byte)
 }
 
 type RawMessage struct {
@@ -80,11 +79,6 @@ type RawMessage struct {
 
 func (m RawMessage) RawData() []byte {
 	return m.Data;
-}
-
-func (m RawMessage) SetRawData(data []byte) {
-	m.Data = make([]byte, len(data));
-	copy(m.Data, data);
 }
 
 type NamespacedName struct {
@@ -126,8 +120,8 @@ type Origin struct {
 }
 
 type Relation struct {
-	NamespacedName                  `yaml:"NamespacedName"`
 	RawMessage
+	NamespacedName                  `yaml:"NamespacedName"`
 
 	OID             dbutils.OID     `yaml:"OID"`             // OID of the relation.
 	ReplicaIdentity ReplicaIdentity `yaml:"ReplicaIdentity"` // Replica identity
@@ -164,8 +158,8 @@ type Truncate struct {
 }
 
 type Type struct {
-	NamespacedName
 	RawMessage
+	NamespacedName
 
 	OID dbutils.OID // OID of the data type
 }
@@ -201,11 +195,14 @@ func (t TupleData) String() string {
 	case TupleNull:
 		return "null"
 	case TupleUnchanged:
-		return "[toasted value]"
+		return "[unchanged value]"
+	default:
+		return "unknown"
 	}
-
-	return "unknown"
 }
+
+func (t TupleData) IsNull() bool { return t.Kind == TupleNull }
+func (t TupleData) IsText() bool { return t.Kind == TupleText }
 
 func (m Begin) String() string {
 	return fmt.Sprintf("FinalLSN:%s Timestamp:%v XID:%d",
@@ -340,10 +337,9 @@ func (ins Insert) SQL(rel Relation) string {
 	names := make([]string, 0)
 	for i, v := range rel.Columns {
 		names = append(names, pgx.Identifier{v.Name}.Sanitize())
-		if ins.NewRow[i].Kind == TupleText {
-			values = append(values, dbutils.QuoteLiteral(string(ins.NewRow[i].Value)))
-		} else if ins.NewRow[i].Kind == TupleNull {
-			values = append(values, "null")
+		val := ins.NewRow[i]
+		if val.IsText() || val.IsNull() {
+			values = append(values, ins.NewRow[i].String())
 		}
 	}
 
@@ -359,28 +355,28 @@ func (upd Update) SQL(rel Relation) string {
 
 	for i, v := range rel.Columns {
 		colName := pgx.Identifier{string(v.Name)}.Sanitize()
-		newVal := dbutils.QuoteLiteral(string(upd.NewRow[i].Value))
+		newVal := upd.NewRow[i]
 
-		if upd.NewRow[i].Kind == TupleNull {
-			values = append(values, fmt.Sprintf("%s = null", colName))
-		} else if upd.NewRow[i].Kind == TupleText {
-			values = append(values, fmt.Sprintf("%s = %s", colName, newVal))
+		if newVal.IsText() || newVal.IsNull() {
+			values = append(values, fmt.Sprintf("%s = %s", colName, newVal.String()))
 		}
 
 		if upd.OldRow != nil {
-			oldVal := dbutils.QuoteLiteral(string(upd.OldRow[i].Value))
+			oldVal := upd.OldRow[i]
 
-			if upd.OldRow[i].Kind == TupleText {
-				cond = append(cond, fmt.Sprintf("%s = %s", colName, oldVal))
-			} else if upd.OldRow[i].Kind == TupleNull {
+			if oldVal.IsText() {
+				cond = append(cond, fmt.Sprintf("%s = %s", colName, oldVal.String()))
+			} else if oldVal.IsNull() {
 				cond = append(cond, fmt.Sprintf("%s is null", colName))
 			}
 		} else {
-			// TODO: is it possible that there is no old row?
+			// If there is no old row it means that the key defined by REPLICA
+			// IDENTITY didn't change and we can use values from new row
+			// to build a conditions string
 			if v.IsKey {
-				if upd.NewRow[i].Kind == TupleText {
-					cond = append(cond, fmt.Sprintf("%s = %s", colName, newVal))
-				} else if upd.NewRow[i].Kind == TupleNull {
+				if newVal.IsText() {
+					cond = append(cond, fmt.Sprintf("%s = %s", colName, newVal.String()))
+				} else if newVal.IsNull() {
 					cond = append(cond, fmt.Sprintf("%s is null", colName))
 				}
 			}
@@ -399,10 +395,13 @@ func (upd Update) SQL(rel Relation) string {
 func (del Delete) SQL(rel Relation) string {
 	cond := make([]string, 0)
 	for i, v := range rel.Columns {
-		if del.OldRow[i].Kind == TupleText {
-			cond = append(cond, fmt.Sprintf("%s = %s",
-				pgx.Identifier{string(v.Name)}.Sanitize(),
-				dbutils.QuoteLiteral(string(del.OldRow[i].Value))))
+		colName := pgx.Identifier{string(v.Name)}.Sanitize()
+		val := del.OldRow[i]
+
+		if val.IsText() {
+			cond = append(cond, fmt.Sprintf("%s = %s", colName, val.String()))
+		} else if val.IsNull() {
+			cond = append(cond, fmt.Sprintf("%s is null", colName))
 		}
 	}
 
@@ -507,9 +506,9 @@ func (t TupleKind) String() string {
 		return "unchanged"
 	case TupleText:
 		return "text"
+	default:
+		return "unknown"
 	}
-
-	return "unknown"
 }
 
 func (n NamespacedName) String() string {

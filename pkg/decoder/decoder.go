@@ -87,67 +87,68 @@ func (d *decoder) columns() []message.Column {
 // Parse a logical replication message.
 // See https://www.postgresql.org/docs/current/static/protocol-logicalrep-message-formats.html
 func Parse(src []byte) (message.Message, error) {
-	var msg message.Message
-
 	msgType := src[0]
 	d := &decoder{order: binary.BigEndian, buf: bytes.NewBuffer(src[1:])}
+
+	raw := message.RawMessage{Data: make([]byte, len(src))}
+	copy(raw.Data, src)
 
 	// XXX: currently we trust that everything we get is well formatted and doesn't
 	// contain mistakes. But to be completely safe we should add some format
 	// checks.
 	switch msgType {
 	case 'B':
-		b := &message.Begin{}
+		b := message.Begin{RawMessage: raw,}
 
 		b.FinalLSN = d.lsn()
 		b.Timestamp = d.timestamp()
 		b.XID = d.int32()
-		msg = b
+		return b, nil
 
 	case 'C':
-		c := &message.Commit{}
+		c := message.Commit{RawMessage: raw,}
 
 		c.Flags = d.uint8()
 		c.LSN = d.lsn()
 		c.TransactionLSN = d.lsn()
 		c.Timestamp = d.timestamp()
-		msg = c
+		return c, nil
 
 	case 'O':
-		o := &message.Origin{}
+		o := message.Origin{RawMessage: raw,}
 		o.LSN = d.lsn()
 		o.Name = d.string()
-		msg = o
+		return o, nil
 
 	case 'R':
-		r := &message.Relation{}
+		r := message.Relation{RawMessage: raw,}
 
 		r.OID = d.oid()
 		r.Namespace = d.string()
 		r.Name = d.string()
 		r.ReplicaIdentity = message.ReplicaIdentity(d.uint8())
 		r.Columns = d.columns()
-		msg = r
+		return r, nil
 
 	case 'Y':
-		t := &message.Type{}
+		t := message.Type{RawMessage: raw,}
 
 		t.OID = d.oid()
 		t.Namespace = d.string()
 		t.Name = d.string()
-		msg = t
+		return t, nil
 
 	case 'I':
-		i := &message.Insert{}
+		i := message.Insert{RawMessage: raw,}
 
 		i.RelationOID = d.oid()
 		if d.uint8() == 'N' {
 			i.NewRow = d.tupledata()
 		}
-		msg = i
+		return i, nil
 
 	case 'U':
-		u := &message.Update{}
+		u := message.Update{RawMessage: raw,}
 
 		u.RelationOID = d.oid()
 		char := d.uint8()
@@ -161,20 +162,20 @@ func Parse(src []byte) (message.Message, error) {
 		if char == 'N' {
 			u.NewRow = d.tupledata()
 		}
-		msg = u
+		return u, nil
 
 	case 'D':
-		m := &message.Delete{}
+		m := message.Delete{RawMessage: raw,}
 
 		m.RelationOID = d.oid()
 		char := d.uint8()
 		if char == 'K' || char == 'O' {
 			m.OldRow = d.tupledata()
 		}
-		msg = m
+		return m, nil
 
 	case 'T':
-		t := &message.Truncate{}
+		t := message.Truncate{RawMessage: raw,}
 
 		relationsCnt := int(d.uint32())
 		options := d.uint8()
@@ -185,12 +186,9 @@ func Parse(src []byte) (message.Message, error) {
 		for i := 0; i < relationsCnt; i++ {
 			t.RelationOIDs[i] = d.oid()
 		}
-		msg = t
+		return t, nil
 
 	default:
 		return nil, fmt.Errorf("unknown message type for %s (%d)", []byte{msgType}, msgType)
 	}
-
-	msg.SetRawData(src);
-	return msg, nil
 }
