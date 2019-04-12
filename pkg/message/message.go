@@ -139,15 +139,17 @@ type Update struct {
 	RawMessage
 	RelationOID dbutils.OID // OID of the relation corresponding to the OID in the relation message.
 
-	OldRow []TupleData
-	NewRow []TupleData
+	NewRow     []TupleData
+	Ident      []TupleData // Key or old row values
+	IdentIsKey bool        // Whether Ident is key
 }
 
 type Delete struct {
 	RawMessage
 	RelationOID dbutils.OID // OID of the relation corresponding to the OID in the relation message.
 
-	OldRow []TupleData
+	Ident      []TupleData // Key or old row values
+	IdentIsKey bool        // Whether Ident is key
 }
 
 type Truncate struct {
@@ -262,8 +264,16 @@ func (m Update) String() string {
 		parts = append(parts, fmt.Sprintf("newValues: [%s]", joinTupleData(m.NewRow, ", ")))
 	}
 
-	if m.OldRow != nil {
-		parts = append(parts, fmt.Sprintf("oldValues: [%s]", joinTupleData(m.OldRow, ", ")))
+	if m.Ident != nil {
+		var label string
+
+		if m.IdentIsKey {
+			label = "key"
+		} else {
+			label = "oldValues"
+		}
+
+		parts = append(parts, fmt.Sprintf("%s: [%s]", label, joinTupleData(m.Ident, ", ")))
 	}
 
 	return strings.Join(parts, " ")
@@ -284,8 +294,16 @@ func (m Delete) String() string {
 	parts := make([]string, 0)
 
 	parts = append(parts, fmt.Sprintf("relOID:%s", m.RelationOID))
-	if m.OldRow != nil {
-		parts = append(parts, fmt.Sprintf("oldValues: [%s]", joinTupleData(m.OldRow, ", ")))
+	if m.Ident != nil {
+		var label string
+
+		if m.IdentIsKey {
+			label = "key"
+		} else {
+			label = "oldValues"
+		}
+
+		parts = append(parts, fmt.Sprintf("%s: [%s]", label, joinTupleData(m.Ident, ", ")))
 	}
 
 	return strings.Join(parts, " ")
@@ -361,12 +379,13 @@ func (upd Update) SQL(rel Relation) string {
 			values = append(values, fmt.Sprintf("%s = %s", colName, newVal.String()))
 		}
 
-		if upd.OldRow != nil {
-			oldVal := upd.OldRow[i]
+		if upd.Ident != nil {
+			keyVal := upd.Ident[i]
 
-			if oldVal.IsText() {
-				cond = append(cond, fmt.Sprintf("%s = %s", colName, oldVal.String()))
-			} else if oldVal.IsNull() {
+			if keyVal.IsText() {
+				cond = append(cond, fmt.Sprintf("%s = %s", colName, keyVal.String()))
+			} else if keyVal.IsNull() && !upd.IdentIsKey {
+				// only for case of REPLICA IDENTITY FULL
 				cond = append(cond, fmt.Sprintf("%s is null", colName))
 			}
 		} else {
@@ -396,11 +415,12 @@ func (del Delete) SQL(rel Relation) string {
 	cond := make([]string, 0)
 	for i, v := range rel.Columns {
 		colName := pgx.Identifier{string(v.Name)}.Sanitize()
-		val := del.OldRow[i]
+		val := del.Ident[i]
 
 		if val.IsText() {
 			cond = append(cond, fmt.Sprintf("%s = %s", colName, val.String()))
-		} else if val.IsNull() {
+		} else if val.IsNull() && !del.IdentIsKey {
+			// only for case of REPLICA IDENTITY FULL
 			cond = append(cond, fmt.Sprintf("%s is null", colName))
 		}
 	}

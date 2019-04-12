@@ -155,7 +155,8 @@ func Parse(src []byte) (message.Message, error) {
 
 		// Did we receive a marker of old tuple?
 		if char == 'K' || char == 'O' {
-			u.OldRow = d.tupledata()
+			u.Ident = d.tupledata()
+			u.IdentIsKey = (char == 'K')
 			char = d.uint8()
 		}
 
@@ -170,7 +171,8 @@ func Parse(src []byte) (message.Message, error) {
 		m.RelationOID = d.oid()
 		char := d.uint8()
 		if char == 'K' || char == 'O' {
-			m.OldRow = d.tupledata()
+			m.Ident = d.tupledata()
+			m.IdentIsKey = (char == 'K')
 		}
 		return m, nil
 
